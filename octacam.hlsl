@@ -3,10 +3,22 @@
 #define POSTERIZE(v, steps) (floor((v) * steps) / (steps))
 
 float invLerp(float from, float to, float value){
-  return (value - from) / (to - from);
+  return clamp((value - from) / (to - from),0,1);
 }
 
 float remap(float iMin, float iMax, float oMin, float oMax, float value) {
+    return lerp(oMin, oMax, invLerp(iMin,iMax,value));
+}
+
+float3 lerpVec(float3 a, float3 b, float t) {
+    return float3(
+        lerp(a.x,b.x,t),
+        lerp(a.y,b.y,t),
+        lerp(a.z,b.z,t)
+    );
+}
+
+float3 remapVec(float iMin, float iMax, float3 oMin, float3 oMax, float value) {
     return lerp(oMin, oMax, invLerp(iMin,iMax,value));
 }
 
@@ -42,6 +54,23 @@ float sdShape(float3 p, out float3 octaPos) {
     p = rotateY(p,builtin_elapsed_time/4);
     octaPos = p;
     return sdOctahedron(p,1);
+}
+
+float3 getNormal(float3 p) {
+    float3 octaPos;
+    float d = sdShape(p, octaPos);
+    float2 e = float2(.001,0);
+    float3 n = d - float3(
+        sdShape(p+e.xyy,octaPos),
+        sdShape(p+e.yxy,octaPos),
+        sdShape(p+e.yyx,octaPos)
+    );
+    return normalize(n);
+}
+
+float getLight(float3 p) {
+    float3 dirLight = normalize(float3(0,0,1));
+    return max(.05,dot(getNormal(p), dirLight));
 }
 
 float2 pointToUv(float3 p) {
@@ -82,10 +111,20 @@ float4 raymarch(float3 ro, float3 rd) {
 
     float minEdge = min(bary.x,min(bary.y,bary.z));
 
-    float3 albedo = minEdge > .03 ? image.Sample(builtin_texture_sampler, pointToUv(octaPos)).xyz : float3(.5,1,1);
+    bool isEdge = minEdge < .03;
 
-    return float4(albedo,1);
-    // return float4(pointToUv(p),0,1);
+    float3 albedo = !isEdge ? image.Sample(builtin_texture_sampler, pointToUv(octaPos)).xyz : float3(.5,1,1);
+
+    albedo = isEdge ? albedo : remapVec(0,.08,float3(.5,1,1),albedo,minEdge);
+
+    float light = getLight(p);
+
+    if (isEdge) light = max(.85,light);
+
+    // float3 normal = getNormal(p);
+
+    return float4(albedo * light,1);
+    // return float4(getNormal(p)/.5+.5,1);
 }
 
 float4 render(float2 uv) {
