@@ -35,7 +35,15 @@ float3 Barycentric(float3 p, float3 a, float3 b, float3 c)
 float sdOctahedron( float3 p, float s)
 {
   p = abs(p);
-  return (p.x+p.y+p.z-s)*0.57735027;
+  float m = p.x+p.y+p.z-s;
+  vec3 q;
+       if( 3.0*p.x < m ) q = p.xyz;
+  else if( 3.0*p.y < m ) q = p.yzx;
+  else if( 3.0*p.z < m ) q = p.zxy;
+  else return m*0.57735027;
+    
+  float k = clamp(0.5*(q.z-q.y+s),0.0,s); 
+  return length(vec3(q.x,q.y-s+k,q.z-k));
 }
 
 float3 rotateX(float3 p, float angle) {
@@ -49,7 +57,7 @@ float3 rotateZ(float3 p, float angle) {
 }
 
 float sdShape(float3 p, out float3 octaPos) {
-    p -= float3(0,.1,3.2);
+    p -= float3(0,.1,3.4);
     p = rotateX(p,.25);
     p = rotateY(p,builtin_elapsed_time/4);
     octaPos = p;
@@ -100,10 +108,12 @@ float2 pointToUv(float3 p) {
 float4 raymarch(float3 ro, float3 rd) {
     float3 p = ro;
     float3 octaPos;
+    float closestDist = MAX_DIST * 10;
     for (int i = 0; i < STEP_LIMIT; i++) {
         float dist = sdShape(p,octaPos);
+        closestDist = min(dist,closestDist);
         if (dist < SURFACE_DIST) break;
-        if (dist > MAX_DIST) return float4(0,0,0,0);
+        if (dist > MAX_DIST) return invLerp(.1,0,closestDist) * float4(.5,1,1,.5);
         p += rd * dist;
     }
 
